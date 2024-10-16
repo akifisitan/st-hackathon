@@ -6,6 +6,7 @@ from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from functions import bildirim_gonder, estimate_future_expenses
+from rag import rag
 
 load_dotenv()
 
@@ -92,7 +93,12 @@ def main():
         neutral_hue="blue",
     ).set(body_background_fill="*background_fill_secondary")
 
-    gr.ChatInterface(predict, type="messages", title="Parapedia", theme=theme).launch()
+    current_assistant = 0
+    if current_assistant == 0:
+        run = predict
+    else:
+        run = rag
+    gr.ChatInterface(run, type="messages", title="Parapedia", theme=theme).launch()
 
 
 if __name__ == "__main__":
