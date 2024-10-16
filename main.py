@@ -1,11 +1,11 @@
+import os
+
 import gradio as gr
 from dotenv import load_dotenv
-from langchain.schema import AIMessage, HumanMessage
+from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-import os
-import pandas as pd
-import numpy as np
-from functions import *
+
+from functions import bildirim_gonder, estimate_future_expenses
 
 load_dotenv()
 
@@ -19,15 +19,10 @@ expenses_data = [
     "6,7500,2777,1300,2900,7000,2300,1750,0,25527",
     "7,7700,4278,1500,2600,7000,2360,1800,0,27238",
     "8,7900,4328,1400,2800,7000,2420,1850,0,27698",
-    "9,8100,4862,1500,2600,7000,2480,1900,0,28442"
+    "9,8100,4862,1500,2600,7000,2480,1900,0,28442",
 ]
 
-user_data = {
-    "maas": 30000,
-    "yas": 30,
-    "meslek": "ogretmen",
-    "cinsiyet": "kadin"
-}
+user_data = {"maas": 30000, "yas": 30, "meslek": "ogretmen", "cinsiyet": "kadin"}
 
 system_prompt = """
 Sen finans , ekonomi, banka, yatırım, harcama yönetimi gibi konularda bilgi veren bir botsun. 
@@ -53,14 +48,8 @@ Kullanıcı verisi :
 
 """
 
-api_key = os.getenv('OPENAI_API_KEY')
-if api_key:
-    print(f"API Key: {api_key}")
-else:
-    print("API Key not found in environment variables.")
 
-
-llm = ChatOpenAI(temperature=0.4,model="gpt-4o-mini")
+llm = ChatOpenAI(temperature=0.4, model="gpt-4o-mini")
 
 
 def predict(message, history):
@@ -75,15 +64,15 @@ def predict(message, history):
         5. Aylık ortalama gelirim nedir?"""
 
     history_langchain_format = []
-    history_langchain_format.append(AIMessage(content=system_prompt))
+    history_langchain_format.append(SystemMessage(content=system_prompt))
     for msg in history:
         if msg["role"] == "user":
             history_langchain_format.append(HumanMessage(content=msg["content"]))
         elif msg["role"] == "assistant":
             history_langchain_format.append(AIMessage(content=msg["content"]))
     history_langchain_format.append(HumanMessage(content=message))
-    gpt_response = llm(history_langchain_format)
-    
+    gpt_response = llm.invoke(history_langchain_format)
+
     # Check if the message is about saving money
     if "Gelecek aylar için harcamalarımı tahmin et" in message:
         return estimate_future_expenses(user_data, expenses_data)
@@ -92,12 +81,19 @@ def predict(message, history):
     return gpt_response.content
 
 
-theme = gr.themes.Default(
-    primary_hue="indigo",
-    secondary_hue="cyan",
-    neutral_hue="blue",
-).set(body_background_fill="*background_fill_secondary")
+def main():
+    api_key = os.environ.get("OPENAI_API_KEY", None)
+    if api_key is None:
+        raise Exception("OPENAI_API_KEY missing")
 
-gr.ChatInterface(
-    predict, type="messages", title="Parapedia", theme=theme
-).launch()
+    theme = gr.themes.Default(
+        primary_hue="indigo",
+        secondary_hue="cyan",
+        neutral_hue="blue",
+    ).set(body_background_fill="*background_fill_secondary")
+
+    gr.ChatInterface(predict, type="messages", title="Parapedia", theme=theme).launch()
+
+
+if __name__ == "__main__":
+    main()
