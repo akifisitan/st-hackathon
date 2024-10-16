@@ -30,7 +30,7 @@ user_data = {
 }
 
 system_prompt = """
-Sen finansal ve ekonomik konularda bilgi veren bir botsun. 
+Sen finans , ekonomi, banka, yatırım, harcama yönetimi gibi konularda bilgi veren bir botsun. 
 Bu konular dışında hiç bir soruya cevap verme.
 
 Kullanıcı verisi : 
@@ -60,10 +60,20 @@ else:
     print("API Key not found in environment variables.")
 
 
-llm = ChatOpenAI(temperature=0.1,model="gpt-4o-mini")
+llm = ChatOpenAI(temperature=0.4,model="gpt-4o-mini")
 
 
 def predict(message, history):
+    # Send an initial message if the chat history is empty
+    if not history:
+        return """Merhaba, ben senin harcama danışmanın ParaPedia. 
+        Bana bu tarz soruları sorabilirsin: \n 
+        1. Gelecek aylar için harcamalarımı tahmin et \n 
+        2. Harcamalarıma göre bütçe planlaması yap\n 
+        3. Geçmiş harcamalarımı kategorilere ayır \n 
+        4. Eğitim kategorisindeki harcamalarım 10.000 TL'yi geçtiğinde bana haber ver \n 
+        5. Aylık ortalama gelirim nedir?"""
+
     history_langchain_format = []
     history_langchain_format.append(AIMessage(content=system_prompt))
     for msg in history:
