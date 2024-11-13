@@ -1,7 +1,6 @@
 import os
 
 import bs4
-from dotenv import load_dotenv
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
@@ -10,8 +9,6 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-load_dotenv()
 
 
 def get_retriever(invalidate: bool):
@@ -48,7 +45,7 @@ def get_retriever(invalidate: bool):
             "https://www.isbank.com.tr/blog/kumulatif-vergi-matrahi-nedir",
             "https://www.isbank.com.tr/blog/tahvil-ve-bono-nedir",
         ),
-        bs_kwargs=dict(parse_only=bs4.SoupStrainer(find_external_class_div)),
+        bs_kwargs=dict(parse_only=bs4.SoupStrainer(find_external_class_div)),  # type: ignore
         encoding="utf-8",
     )
     docs = loader.load()
@@ -95,16 +92,23 @@ def rag(message, history):
         elif msg["role"] == "assistant":
             history_langchain_format.append(AIMessage(content=msg["content"]))
     history_langchain_format.append(HumanMessage(content=message))
-    result = rag_chain.invoke({"input": message})
-    answer = result["answer"]
+    answer = ""
+    context = {}
+    for chunk in rag_chain.stream({"input": message}):
+        ctx = chunk.get("context", None)
+        if ctx is not None:
+            context = ctx
+        c = chunk.get("answer", None)
+        if c is not None:
+            answer = answer + c
+            yield answer
     print(answer)
 
     # Add sources
-    if len(result["context"]) > 0 and "bilmiyorum" not in answer.lower():
+    if len(context) > 0 and "bilmiyorum" not in answer.lower():
         sources = set()
-        for doc in result["context"]:
+        for doc in context:
             sources.add(doc.metadata["source"])
-        answer += f"\nKaynaklar: {', '.join(sources)}\n"
         print(f"\nKaynaklar: {', '.join(sources)}\n")
-
-    return answer
+        answer += f"\nKaynaklar: {', '.join(sources)}\n"
+        yield answer

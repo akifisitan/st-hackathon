@@ -64,17 +64,3 @@ def estimate_future_expenses(user_data, expenses_data):
 
     # Return the estimated future expenses as a string in Turkish
     return f"Gelecek 3 ay için kategorilere göre tahmini harcamalar (enflasyon dahil):\n{future_expenses_str}"
-
-
-def bildirim_gonder(user_data, expenses_data):
-    return "Alarm ayarlandı."
-
-
-def bilgi_ver(user_data, expenses_data, topic):
-    if topic == "virman":
-        return (
-            "Virman, bir banka hesabından başka bir banka hesabına para transferidir."
-        )
-    elif topic == "kefil":
-        return "Kefil, bir banka hesabından başka bir banka hesabına para transferidir."
-    return "Bilgi verilemedi"

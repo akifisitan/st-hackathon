@@ -5,10 +5,8 @@ from dotenv import load_dotenv
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from functions import bildirim_gonder, estimate_future_expenses
+from functions import estimate_future_expenses
 from rag import rag
-
-load_dotenv()
 
 expenses_data = [
     "Ay,Market,Yeme ve İçme,Sağlık ve Kişisel Bakım,Giyim ve Aksesuar,Fatura ve Tekrar Eden Ödemeler,Benzin ve Akaryakıt,Diğer,Ev Eşyaları,Toplam Harcama",
@@ -56,13 +54,14 @@ llm = ChatOpenAI(temperature=0.4, model="gpt-4o-mini")
 def predict(message, history):
     # Send an initial message if the chat history is empty
     if not history:
-        return """Merhaba, ben senin harcama danışmanın ParaPedia. 
+        yield """Merhaba, ben senin harcama danışmanın ParaPedia. 
         Bana bu tarz soruları sorabilirsin: \n 
         1. Gelecek aylar için harcamalarımı tahmin et \n 
         2. Harcamalarıma göre bütçe planlaması yap\n 
         3. Geçmiş harcamalarımı kategorilere ayır \n 
         4. Eğitim kategorisindeki harcamalarım 10.000 TL'yi geçtiğinde bana haber ver \n 
         5. Aylık ortalama gelirim nedir?"""
+        return
 
     history_langchain_format = []
     history_langchain_format.append(SystemMessage(content=system_prompt))
@@ -72,17 +71,20 @@ def predict(message, history):
         elif msg["role"] == "assistant":
             history_langchain_format.append(AIMessage(content=msg["content"]))
     history_langchain_format.append(HumanMessage(content=message))
-    gpt_response = llm.invoke(history_langchain_format)
 
     # Check if the message is about saving money
-    if "Gelecek aylar için harcamalarımı tahmin et" in message:
-        return estimate_future_expenses(user_data, expenses_data)
-    elif "bana haber ver" in message:
-        return bildirim_gonder(user_data, expenses_data)
-    return gpt_response.content
+    if "gelecek aylar için harcamalarımı tahmin et" in message.lower():
+        yield estimate_future_expenses(user_data, expenses_data)
+        return
+
+    response = ""
+    for chunk in llm.stream(history_langchain_format):
+        response += str(chunk.content)
+        yield response
 
 
 def main():
+    load_dotenv()
     api_key = os.environ.get("OPENAI_API_KEY", None)
     if api_key is None:
         raise Exception("OPENAI_API_KEY missing")
@@ -94,10 +96,8 @@ def main():
     ).set(body_background_fill="*background_fill_secondary")
 
     current_assistant = 0
-    if current_assistant == 0:
-        run = predict
-    else:
-        run = rag
+    run = predict if current_assistant == 0 else rag
+
     gr.ChatInterface(run, type="messages", title="Parapedia", theme=theme).launch()
 
 
