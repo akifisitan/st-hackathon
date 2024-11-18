@@ -1,70 +1,88 @@
 import os
+import random
+import time
+from typing import Literal
 
 import gradio as gr
 from dotenv import load_dotenv
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from functions import estimate_future_expenses
-from rag import rag
+from rag import rag, rag_examples
 
-expenses_data = [
-    "Ay,Market,Yeme ve İçme,Sağlık ve Kişisel Bakım,Giyim ve Aksesuar,Fatura ve Tekrar Eden Ödemeler,Benzin ve Akaryakıt,Diğer,Ev Eşyaları,Toplam Harcama",
-    "1,6500,4153,1200,2500,7000,2000,1500,0,24853",
-    "2,6700,3335,1100,2700,7000,2060,1550,0,24445",
-    "3,6900,3263,1300,2600,7000,2120,1600,0,24783",
-    "4,7100,4231,1200,2800,7000,2180,1650,0,26161",
-    "5,7300,3533,1400,2500,7000,2240,1700,0,25673",
-    "6,7500,2777,1300,2900,7000,2300,1750,0,25527",
-    "7,7700,4278,1500,2600,7000,2360,1800,0,27238",
-    "8,7900,4328,1400,2800,7000,2420,1850,0,27698",
-    "9,8100,4862,1500,2600,7000,2480,1900,0,28442",
+load_dotenv()
+
+
+with open("data.csv", encoding="utf-8") as f:
+    data = f.read()
+
+with open("forecast.csv", encoding="utf-8") as f:
+    forecast = f.read()
+
+
+llm = ChatOpenAI(temperature=0.2, model="gpt-4o-mini")
+
+
+system_message = """Sen Türkçe konuşan, kişiselleştirilmiş finansal analiz ve tavsiyeler sunan bir finansal asistansın. 
+    Aşağıdaki kullanıcı profili ve harcama verilerine göre yardımcı olacaksın:
+
+    KULLANICI PROFİLİ:
+    - Meslek: {meslek}
+    - Yaş: {yas}
+    - Aylık Net Gelir: ₺{maas:,}
+    - Cinsiyet: {cinsiyet}
+
+    SON 3 SENENIN HARCAMA VERISI:
+    {harcama_verisi}
+
+    Gelecek 6 ay için Holtz exponential smoothing kullanarak hesaplanan harcama tahmini
+    {tahmin}
+
+    ÖNEMLİ NOTLAR:
+    1. Tüm finansal tavsiyeleri kişinin profiline ve harcama alışkanlıklarına göre özelleştir
+    2. Birikim önerilerinde bulunurken mevcut harcama paternlerini göz önünde bulundur
+    3. Enflasyonu ve ekonomik koşulları değerlendirmeye kat
+    4. Harcama kategorilerindeki değişimleri analiz et ve trend bazlı önerilerde bulun
+    5. Acil durum fonu ve uzun vadeli finansal hedefler için öneriler sun
+
+    Kullanıcının sorularını yanıtlarken:
+    - Net ve anlaşılır bir dil kullan
+    - Sayısal verileri ₺ sembolü ve binlik ayraçlarla formatla
+    - Gerektiğinde kategori bazında detaylı analiz sun
+    - Praktik ve uygulanabilir öneriler ver
+    - Finansal hedeflere ulaşmak için actionable adımlar öner
+
+    ÖRNEK SORULAR VE ANAHTAR KELİMELER:
+    - "Aylık harcama analizi" - Detaylı harcama analizi sun
+    - "Birikim önerisi" - Kişiye özel birikim stratejileri öner
+    - "Harcama trendi" - Kategori bazında trend analizi yap
+    - "Bütçe tavsiyesi" - Kişiselleştirilmiş bütçe önerileri sun
+    - "Tasarruf imkanları" - Mevcut harcamalara göre tasarruf fırsatları belirt
+
+    - "X kategorisindeki harcamalarım y TL yi geçtiğinde beni bilgilendir" - X kategorisi için y TL bilgilendirme alarmı kuruldu şeklinde cevap ver, başka detay verme
+    - "Gelecek ay için harcama tahmini yap" - Tahmin verisini kullanarak detaylı ve inandırıcı bir açıklama yap, bu bilgiye nasıl ulaştığını da basitçe açıkla
+    - "Harcamalarım hakkında bilgi ver" - Verileri kullanarak detaylı bilgi ver, sene bazında değil olayın geneline odaklan
+    - "Harcamalarım için bütçe planlaması yap" - Kişiselleştirilmiş bütçe önerileri sun
+    """.format(
+    meslek="Grafik Dizaynırı",
+    yas=25,
+    harcama_verisi=data,
+    tahmin=forecast,
+    maas=35000,
+    cinsiyet="Kadın",
+)
+
+examples = [
+    "Harcamalarım hakkında bilgi ver",
+    "Harcamalarım için bütçe planlaması yap",
+    "Gelecek ay için harcama tahmini yap",
+    "Kişisel bakım harcamalarım 5.000 TL'yi geçtiğinde beni bilgilendir",
 ]
-
-user_data = {"maas": 30000, "yas": 30, "meslek": "ogretmen", "cinsiyet": "kadin"}
-
-system_prompt = """
-Sen finans , ekonomi, banka, yatırım, harcama yönetimi gibi konularda bilgi veren bir botsun. 
-Bu konular dışında hiç bir soruya cevap verme.
-
-Kullanıcı verisi : 
-"Aylık harcama" : 
-"Ay,Market,Yeme ve İçme,Sağlık ve Kişisel Bakım,Giyim ve Aksesuar,Fatura ve Tekrar Eden Ödemeler,Benzin ve Akaryakıt,Diğer,Ev Eşyaları,Toplam Harcama",
-    "1,6500,4153,1200,2500,7000,2000,1500,0,24853",
-    "2,6700,3335,1100,2700,7000,2060,1550,0,24445",
-    "3,6900,3263,1300,2600,7000,2120,1600,0,24783",
-    "4,7100,4231,1200,2800,7000,2180,1650,0,26161",
-    "5,7300,3533,1400,2500,7000,2240,1700,0,25673",
-    "6,7500,2777,1300,2900,7000,2300,1750,0,25527",
-    "7,7700,4278,1500,2600,7000,2360,1800,0,27238",
-    "8,7900,4328,1400,2800,7000,2420,1850,0,27698",
-    "9,8100,4862,1500,2600,7000,2480,1900,0,28442"
-
-"Maaş": 30000,
-"Yaş": 30,
-"Meslek": "Öğretmen",
-"Cinsiyet": "Kadın"
-
-"""
-
-
-llm = ChatOpenAI(temperature=0.4, model="gpt-4o-mini")
 
 
 def predict(message, history):
-    # Send an initial message if the chat history is empty
-    if not history:
-        yield """Merhaba, ben senin harcama danışmanın ParaPedia. 
-        Bana bu tarz soruları sorabilirsin: \n 
-        1. Gelecek aylar için harcamalarımı tahmin et \n 
-        2. Harcamalarıma göre bütçe planlaması yap\n 
-        3. Geçmiş harcamalarımı kategorilere ayır \n 
-        4. Eğitim kategorisindeki harcamalarım 10.000 TL'yi geçtiğinde bana haber ver \n 
-        5. Aylık ortalama gelirim nedir?"""
-        return
-
     history_langchain_format = []
-    history_langchain_format.append(SystemMessage(content=system_prompt))
+    history_langchain_format.append(SystemMessage(content=system_message))
     for msg in history:
         if msg["role"] == "user":
             history_langchain_format.append(HumanMessage(content=msg["content"]))
@@ -72,19 +90,24 @@ def predict(message, history):
             history_langchain_format.append(AIMessage(content=msg["content"]))
     history_langchain_format.append(HumanMessage(content=message))
 
-    # Check if the message is about saving money
-    if "gelecek aylar için harcamalarımı tahmin et" in message.lower():
-        yield estimate_future_expenses(user_data, expenses_data)
-        return
-
-    response = ""
+    stream = ""
     for chunk in llm.stream(history_langchain_format):
-        response += str(chunk.content)
-        yield response
+        stream += str(chunk.content)
+        yield stream
+
+    # Simulate streaming
+    # response = str(llm.invoke(history_langchain_format).content)
+    # print(response)
+    # stream = ""
+    # chunk_size = 50
+    # chunks = [response[i : i + chunk_size] for i in range(0, len(response), chunk_size)]
+    # for chunk in chunks:
+    #     time.sleep(random.uniform(0.1, 0.15))
+    #     stream += chunk
+    #     yield stream
 
 
 def main():
-    load_dotenv()
     api_key = os.environ.get("OPENAI_API_KEY", None)
     if api_key is None:
         raise Exception("OPENAI_API_KEY missing")
@@ -95,10 +118,20 @@ def main():
         neutral_hue="blue",
     ).set(body_background_fill="*background_fill_secondary")
 
-    current_assistant = 0
-    run = predict if current_assistant == 0 else rag
+    current_assistant: Literal["butce", "okuryazar"] = "butce"
+    run = predict if current_assistant == "butce" else rag
 
-    gr.ChatInterface(run, type="messages", title="Parapedia", theme=theme).launch()
+    gr.ChatInterface(
+        run,
+        type="messages",
+        title="Parapedia - Bütçe Analizi"
+        if current_assistant == "butce"
+        else "Parapedia - Finansal Okuryazarlık",
+        examples=examples if current_assistant == "butce" else rag_examples,
+        theme=theme,
+        show_progress="hidden",
+        fill_width=True,
+    ).launch()
 
 
 if __name__ == "__main__":

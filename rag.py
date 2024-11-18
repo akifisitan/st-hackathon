@@ -1,6 +1,7 @@
 import os
 
 import bs4
+from dotenv import load_dotenv
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
@@ -9,6 +10,8 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+load_dotenv()
 
 
 def get_retriever(invalidate: bool):
@@ -81,6 +84,14 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 retriever = get_retriever(False)
 question_answer_chain = create_stuff_documents_chain(llm, prompt)
 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+
+
+rag_examples = [
+    "İhracat ve e-ihracat arasında ne gibi farklar var?",
+    "Kümülatif vergi matrahı nedir?",
+    "Fiziksel altınlarımı nasıl değerlendirebilirim?",
+    "Tahvil ve bono nedir?",
+]
 
 
 def rag(message, history):
